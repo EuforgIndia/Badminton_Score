@@ -18,7 +18,7 @@
   <span id="scoreA">0</span> - 
   <span id="scoreB">0</span>
 </div>
-
+<h2 id="winner" style="color: green;"></h2>
 <button onclick="addPoint('A')">+ Point A</button>
 <button onclick="addPoint('B')">+ Point B</button>
 <br>
@@ -28,13 +28,17 @@
 let scoreA = 0;
 let scoreB = 0;
 let history = [];
+let gameOver = false;
 
 function addPoint(player) {
+  if (gameOver) return;
+
   history.push({scoreA, scoreB});
 
   if (player === 'A') scoreA++;
   else scoreB++;
 
+  checkWinner();
   updateDisplay();
 }
 
@@ -43,13 +47,33 @@ function undo() {
     let last = history.pop();
     scoreA = last.scoreA;
     scoreB = last.scoreB;
+    gameOver = false;
+    document.getElementById("winner").innerText = "";
     updateDisplay();
+  }
+}
+
+function checkWinner() {
+  if (
+    (scoreA >= 21 || scoreB >= 21) &&
+    Math.abs(scoreA - scoreB) >= 2
+  ) {
+    gameOver = true;
+  }
+
+  if (scoreA === 30 || scoreB === 30) {
+    gameOver = true;
   }
 }
 
 function updateDisplay() {
   document.getElementById("scoreA").innerText = scoreA;
   document.getElementById("scoreB").innerText = scoreB;
+
+  if (gameOver) {
+    let winner = scoreA > scoreB ? "Player A Wins!" : "Player B Wins!";
+    document.getElementById("winner").innerText = winner;
+  }
 }
 </script>
 
