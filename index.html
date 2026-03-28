@@ -156,8 +156,6 @@
     .pick-team-label { font-size: 9px; color: #5a6478; font-family: 'Courier New', monospace; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 1px; }
     .pick-name { font-size: 14px; font-weight: 900; }
     .pick-divider { height: 1px; background: #1e2533; margin: 4px 0; }
-
-
   </style>
 </head>
 <body>
@@ -186,7 +184,6 @@
     <div class="card">
       <div class="card-top-line"></div>
       <div class="card-title">Team A</div>
-      <!-- Team name input — only shown in doubles -->
       <div class="doubles-names" id="doublesTeamNameA">
         <div class="input-group">
           <label>Team Name</label>
@@ -211,7 +208,6 @@
     <div class="card">
       <div class="card-top-line"></div>
       <div class="card-title">Team B</div>
-      <!-- Team name input — only shown in doubles -->
       <div class="doubles-names" id="doublesTeamNameB">
         <div class="input-group">
           <label>Team Name</label>
@@ -268,7 +264,7 @@
       </div>
     </div>
 
-    <!-- Rally (moved here, just below scoreboard) -->
+    <!-- Rally -->
     <div class="rally-wrap" id="rallyWrap">
       <div class="rally-dots" id="rallyDots"></div>
       <div class="rally-legend">
@@ -331,8 +327,6 @@
     <button class="btn-ghost" id="btnUndo" onclick="undo()" disabled>↩ Undo Last Point</button>
     <button class="btn-share" onclick="openShare()">📤 Share Result</button>
     <button class="btn-ghost" onclick="newMatch()">⟳ New Match</button>
-
-
   </div>
 
 </div>
@@ -377,10 +371,6 @@
   var editingCell = null;
 
   // ── HELPERS ──────────────────────────────────────────────
-
-  // Returns the display label for a team's point button / legend
-  // In doubles: use custom team name if set, else "Team A" / "Team B"
-  // In singles: use the player's first name
   function teamLabel(team) {
     if (gameType === 'doubles') {
       var obj = team === 'A' ? teamA : teamB;
@@ -451,7 +441,6 @@
       document.getElementById('dispB2').textContent = teamB.p2 || '';
     }
 
-    // Point button labels & legend
     document.getElementById('btnLabelA').textContent = teamLabel('A');
     document.getElementById('btnLabelB').textContent = teamLabel('B');
     document.getElementById('legA').textContent = teamLabel('A');
@@ -522,9 +511,7 @@
       courtPositions[otherCellId] = otherPlayer;
     }
 
-    // After all swaps, re-read who is now in the active server box
-    // and sync currentServerName. This correctly handles the case where
-    // tapping A-left causes A-right (the server box) to get a new occupant.
+    // Re-read who is in the active server box and sync currentServerName
     var servingScore = currentServer === 'A' ? scoreA : scoreB;
     var activeServerSide = (servingScore % 2 === 0) ? 'right' : 'left';
     var activeCell = currentServer + '-' + activeServerSide;
@@ -583,28 +570,23 @@
     currentServer = player.team;
     currentServerName = player.name;
 
-    // Server's score parity decides which box the server stands in
     var serverScore = currentServer === 'A' ? scoreA : scoreB;
     var serverSide  = (serverScore % 2 === 0) ? 'right' : 'left';
     var serverOther = serverSide === 'right' ? 'left' : 'right';
 
-    // BWF rule: receiver stands diagonally opposite the server
-    var receiverSide  = serverSide;   // same column as server (diagonal = same side)
+    var receiverSide  = serverSide;
     var receiverOther = serverOther;
 
     var servingTeam   = player.team === 'A' ? teamA : teamB;
     var receivingTeam = player.team === 'A' ? teamB : teamA;
     var receivingKey  = player.team === 'A' ? 'B' : 'A';
 
-    // --- Serving team ---
     courtPositions[player.team + '-' + serverSide] = player.name;
     if (gameType === 'doubles' && servingTeam.p2) {
       var servingPartner = (player.name === servingTeam.p1) ? servingTeam.p2 : servingTeam.p1;
       courtPositions[player.team + '-' + serverOther] = servingPartner;
     }
 
-    // --- Receiving team ---
-    // In singles and doubles, put receiver (p1 of receiving team) diagonally opposite
     courtPositions[receivingKey + '-' + receiverSide] = receivingTeam.p1;
     if (gameType === 'doubles' && receivingTeam.p2) {
       courtPositions[receivingKey + '-' + receiverOther] = receivingTeam.p2;
@@ -620,6 +602,8 @@
   // ── GAME LOGIC ───────────────────────────────────────────
   function addPoint(player) {
     if (gameOver) return;
+
+    // Save state for undo
     gameHistory.push({
       scoreA: scoreA, scoreB: scoreB,
       currentServer: currentServer, currentServerName: currentServerName,
@@ -627,14 +611,36 @@
       positions: JSON.parse(JSON.stringify(courtPositions))
     });
 
-    if (player === 'A') scoreA++;
-    else scoreB++;
+    // Update score
+    if (player === 'A') scoreA++; else scoreB++;
 
-    currentServer = player;
-    var winnerTeam = player === 'A' ? teamA : teamB;
-    var loserTeam  = player === 'A' ? teamB : teamA;
-    if (currentServerName === loserTeam.p1 || currentServerName === loserTeam.p2) {
-      currentServerName = winnerTeam.p1;
+    if (currentServer !== player) {
+      // ── Service changes hands ──────────────────────────────
+      // The team that just won the rally becomes the new server.
+      // Their court positions don't change — whoever is already
+      // in the correct box (per score parity) becomes the server.
+      currentServer = player;
+      var newScore  = player === 'A' ? scoreA : scoreB;
+      var newSide   = (newScore % 2 === 0) ? 'right' : 'left';
+      var occupant  = courtPositions[player + '-' + newSide];
+      currentServerName = occupant || (player === 'A' ? teamA.p1 : teamB.p1);
+    } else {
+      // ── Same team keeps serving ────────────────────────────
+      // BWF rule: serving partners swap sides after every point
+      // the serving team wins. We physically swap them in courtPositions
+      // so the correct player ends up in the new active box.
+      if (gameType === 'doubles') {
+        var leftKey  = player + '-left';
+        var rightKey = player + '-right';
+        var tmp = courtPositions[leftKey];
+        courtPositions[leftKey]  = courtPositions[rightKey];
+        courtPositions[rightKey] = tmp;
+      }
+      // Now read who is in the new active box
+      var newScore2 = player === 'A' ? scoreA : scoreB;
+      var newSide2  = (newScore2 % 2 === 0) ? 'right' : 'left';
+      var occupant2 = courtPositions[player + '-' + newSide2];
+      currentServerName = occupant2 || currentServerName;
     }
 
     rallyHistory.push(player);
@@ -712,12 +718,10 @@
       var winnerObj = scoreA > scoreB ? teamA : teamB;
       var winnerDisplay;
       if (gameType === 'doubles') {
-        // Doubles: show custom team name, or fallback "Team A" / "Team B"
         winnerDisplay = winnerObj.name
           ? winnerObj.name
           : (winnerObj === teamA ? 'Team A' : 'Team B');
       } else {
-        // Singles: show player name
         winnerDisplay = winnerObj.p1;
       }
       document.getElementById('winnerName').textContent = winnerDisplay + ' Wins!';
@@ -735,7 +739,7 @@
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  // ── SHARE (custom canvas image → native share sheet) ──────
+  // ── SHARE ────────────────────────────────────────────────
   function openShare() {
     var toast = document.getElementById('shareToast');
     toast.style.display = 'block';
@@ -768,7 +772,6 @@
     var canvas = document.createElement('canvas');
     var ctx    = canvas.getContext('2d');
 
-    // ── Data ─────────────────────────────────────────────────
     var isDoubles  = gameType === 'doubles';
     var typeLabel  = isDoubles ? 'DOUBLES' : 'SINGLES';
     var teamLabelA = isDoubles ? (teamA.name || 'Team A') : teamA.p1;
@@ -782,22 +785,18 @@
       var wo = leadA ? teamA : teamB;
       winner = isDoubles ? (wo.name || (wo === teamA ? 'Team A' : 'Team B')) : wo.p1;
     }
-    var totalDots  = rallyHistory.length;
+    var totalDots = rallyHistory.length;
 
-    // ── Fixed Y anchors (nothing overlaps) ───────────────────
-    // Each section has a known start Y so scores NEVER touch names.
-    var Y_TOPLINE   = 0;
-    var Y_LOGO      = 52;    // "🏸 BADMINTON"
-    var Y_SUBTITLE  = 78;    // "MATCH RESULT"
-    var Y_BADGE     = 118;   // SINGLES/DOUBLES pill
-    var Y_TEAMNAME  = 170;   // team/player names
-    var Y_PLAYERSUB = 196;   // doubles player sub-names
-    var Y_SCORE     = isDoubles ? 290 : 270;  // big scores — well below names
+    var Y_LOGO      = 52;
+    var Y_SUBTITLE  = 78;
+    var Y_BADGE     = 118;
+    var Y_TEAMNAME  = 170;
+    var Y_PLAYERSUB = 196;
+    var Y_SCORE     = isDoubles ? 290 : 270;
     var Y_DIVIDER   = isDoubles ? 360 : 340;
-    var Y_WINNER    = Y_DIVIDER + 50;         // winner block
+    var Y_WINNER    = Y_DIVIDER + 50;
     var Y_RALLYHDR  = (gameOver ? Y_WINNER + 56 : Y_DIVIDER + 40);
 
-    // Rally dots
     var PAD        = 56;
     var dotR       = 7, dotGap = 22;
     var dotsPerRow = Math.floor((W - PAD*2) / dotGap);
@@ -809,11 +808,9 @@
     canvas.width  = W;
     canvas.height = H;
 
-    // ── Background ───────────────────────────────────────────
     ctx.fillStyle = '#0a0c10';
     ctx.fillRect(0, 0, W, H);
 
-    // top accent line
     var grad = ctx.createLinearGradient(0, 0, W, 0);
     grad.addColorStop(0,   'rgba(200,247,58,0)');
     grad.addColorStop(0.5, '#c8f73a');
@@ -821,12 +818,10 @@
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, 3);
 
-    // ── Logo ─────────────────────────────────────────────────
     ctx.textAlign = 'center';
     ctx.font      = 'bold 30px "Courier New", monospace';
     ctx.fillStyle = '#c8f73a';
     ctx.fillText('BADMINTON', W/2 + 20, Y_LOGO);
-    // racket emoji separately (canvas emoji rendering)
     ctx.font = '26px serif';
     ctx.fillText('🏸', W/2 - 90, Y_LOGO);
 
@@ -834,7 +829,6 @@
     ctx.fillStyle = '#5a6478';
     ctx.fillText('MATCH  RESULT', W/2, Y_SUBTITLE);
 
-    // ── Badge ────────────────────────────────────────────────
     var bW = 130, bH = 28;
     roundRect(ctx, W/2 - bW/2, Y_BADGE - 20, bW, bH, 14);
     ctx.fillStyle = '#12161e'; ctx.fill();
@@ -843,19 +837,16 @@
     ctx.fillStyle = '#5a6478';
     ctx.fillText(typeLabel, W/2, Y_BADGE - 2);
 
-    // ── Team names ───────────────────────────────────────────
     ctx.font      = 'bold 24px Arial, sans-serif';
     ctx.fillStyle = '#e8edf5';
     ctx.textAlign = 'center';
     ctx.fillText(teamLabelA, W/4, Y_TEAMNAME);
     ctx.fillText(teamLabelB, W*3/4, Y_TEAMNAME);
 
-    // VS
     ctx.font      = 'bold 12px "Courier New", monospace';
     ctx.fillStyle = '#2a3346';
     ctx.fillText('VS', W/2, Y_TEAMNAME);
 
-    // Doubles player sub-names
     if (isDoubles) {
       ctx.font      = '13px Arial, sans-serif';
       ctx.fillStyle = '#5a6478';
@@ -863,37 +854,30 @@
       ctx.fillText(subB, W*3/4, Y_PLAYERSUB);
     }
 
-    // Horizontal rule under names
     var ruleY = isDoubles ? Y_PLAYERSUB + 20 : Y_TEAMNAME + 18;
     ctx.strokeStyle = '#1e2533'; ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(PAD, ruleY); ctx.lineTo(W - PAD, ruleY);
     ctx.stroke();
 
-    // ── Scores ───────────────────────────────────────────────
-    // Draw score A
     ctx.font      = 'bold 96px Arial, sans-serif';
     ctx.fillStyle = leadA ? '#c8f73a' : '#e8edf5';
     ctx.textAlign = 'center';
     ctx.fillText(String(scoreA), W/4, Y_SCORE);
 
-    // Dash
     ctx.font      = 'bold 44px Arial, sans-serif';
     ctx.fillStyle = '#2a3346';
     ctx.fillText('—', W/2, Y_SCORE - 14);
 
-    // Draw score B
     ctx.font      = 'bold 96px Arial, sans-serif';
     ctx.fillStyle = leadB ? '#c8f73a' : '#e8edf5';
     ctx.fillText(String(scoreB), W*3/4, Y_SCORE);
 
-    // ── Divider ──────────────────────────────────────────────
     ctx.strokeStyle = '#1e2533'; ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(PAD, Y_DIVIDER); ctx.lineTo(W - PAD, Y_DIVIDER);
     ctx.stroke();
 
-    // ── Winner ───────────────────────────────────────────────
     if (gameOver && winner) {
       ctx.font      = '11px "Courier New", monospace';
       ctx.fillStyle = '#5a6478';
@@ -904,13 +888,11 @@
       ctx.fillText(winner.toUpperCase(), W/2, Y_WINNER + 34);
     }
 
-    // ── Rally header ─────────────────────────────────────────
     ctx.font      = '11px "Courier New", monospace';
     ctx.fillStyle = '#5a6478';
     ctx.textAlign = 'center';
     ctx.fillText('RALLY HISTORY  ·  ' + totalDots + ' POINTS', W/2, Y_RALLYHDR);
 
-    // ── Dots ─────────────────────────────────────────────────
     if (totalDots > 0) {
       var rowWidth = Math.min(totalDots, dotsPerRow) * dotGap;
       var startX   = W/2 - rowWidth/2 + dotR;
@@ -924,7 +906,6 @@
         ctx.fill();
       }
 
-      // ── Legend ───────────────────────────────────────────────
       ctx.font = '12px "Courier New", monospace';
       var wA   = ctx.measureText(teamLabelA).width;
       var wB   = ctx.measureText(teamLabelB).width;
@@ -948,7 +929,6 @@
     return canvas;
   }
 
-  // Helper: rounded rect path
   function roundRect(ctx, x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -987,7 +967,6 @@
   }
 
   function fallbackDownload(canvas) {
-    // Desktop fallback: download the image
     var link = document.createElement('a');
     link.download = 'badminton-result.png';
     link.href = canvas.toDataURL('image/png');
