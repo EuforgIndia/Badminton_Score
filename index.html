@@ -143,6 +143,8 @@
     .igroup label{display:block;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;font-family:'Courier New',monospace;margin-bottom:5px;}
     .igroup input{width:100%;padding:11px 13px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:14px;font-family:Arial,sans-serif;outline:none;}
     .igroup input:focus{border-color:var(--neon);}
+    .sets-sel-btn{flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;text-align:center;font-family:'Courier New',monospace;font-size:13px;font-weight:700;letter-spacing:1px;transition:all 0.15s;}
+    .sets-sel-btn.selected{border-color:var(--neon);color:var(--neon);background:var(--neon-dim);}
     .igroup input::placeholder{color:#2a3346;}
     .dbln{display:none;}
     .dbln.on{display:block;}
@@ -402,13 +404,43 @@
             <div class="igroup"><label>Player 2</label><input type="text" id="nameB2" placeholder="e.g. Yusuf" maxlength="16"></div>
           </div>
         </div>
+        <!-- Sets & Side Options -->
+        <div class="setup-card">
+          <div class="setup-card-line"></div>
+          <div class="setup-card-title">Match Options</div>
+
+          <div class="igroup">
+            <label>Number of Sets</label>
+            <div style="display:flex;gap:8px">
+              <div class="sets-sel-btn selected" id="sets-btn-1" onclick="selectSets(1)">1</div>
+              <div class="sets-sel-btn" id="sets-btn-3" onclick="selectSets(3)">3</div>
+              <div class="sets-sel-btn" id="sets-btn-5" onclick="selectSets(5)">5</div>
+            </div>
+            <div style="font-size:9px;color:var(--muted);font-family:'Courier New',monospace;margin-top:5px;letter-spacing:1px" id="setsHint">First to win 1 set wins</div>
+          </div>
+
+          <div class="igroup" style="margin-bottom:0">
+            <label>Starting Side</label>
+            <div style="display:flex;gap:8px">
+              <div class="sets-sel-btn selected" id="side-btn-normal" onclick="selectSide('normal')" style="flex:1;font-size:10px;padding:10px 6px">
+                <div style="font-size:14px;margin-bottom:2px">🏸</div>
+                <div>A serves first</div>
+              </div>
+              <div class="sets-sel-btn" id="side-btn-swap" onclick="selectSide('swap')" style="flex:1;font-size:10px;padding:10px 6px">
+                <div style="font-size:14px;margin-bottom:2px">🔄</div>
+                <div>B serves first</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <button class="btn-primary" onclick="startMatch()">▶ Start Match</button>
       </div>
 
       <!-- LIVE SCORER -->
       <div id="scorer-live" style="display:none">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <button onclick="confirmNewMatch()" style="background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;font-family:'Courier New',monospace;letter-spacing:1px">← BACK</button>
+          <button onclick="goHome()" style="background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;font-family:'Courier New',monospace;letter-spacing:1px">← HOME</button>
           <span class="match-badge badge-progress" id="liveTypeBadge">Singles</span>
         </div>
 
@@ -424,7 +456,9 @@
             <div class="score-divider">—</div>
             <div class="score-block" id="blockB"><span class="score-number" id="scoreB">0</span></div>
           </div>
-          <div class="server-row">
+          <!-- Sets display (hidden for bo1) -->
+        <div id="setsDisplayBar" style="display:none;justify-content:center;gap:6px;margin-bottom:8px;flex-wrap:wrap"></div>
+        <div class="server-row">
             <div class="server-dot"></div>
             <div class="server-text" id="serverInfo">Server: <b>—</b></div>
             <button class="change-srv-btn" onclick="openServerPicker()">✏ Server</button>
@@ -503,6 +537,7 @@
         </div>
         <button class="btn-ghost" id="btnUndo" onclick="undo()" disabled>↩ Undo Last Point</button>
         <button class="btn-share-main" onclick="openShareModal()">📤 Share Result</button>
+        <button class="btn-ghost" onclick="confirmNewMatch()" style="margin-top:4px">🔄 New Match</button>
       </div>
     </div>
   </div>
@@ -581,8 +616,9 @@
         </div>
       </div>
 
-      <div style="text-align:center;padding:20px 0 10px">
+      <div style="text-align:center;padding:16px 0 6px">
         <div style="font-size:10px;letter-spacing:2px;color:var(--border);font-family:'Courier New',monospace">ShuttleScore v1.0 · by Euforg</div>
+        <div onclick="debugStorage()" style="font-size:9px;letter-spacing:1px;color:#2a3346;font-family:'Courier New',monospace;margin-top:8px;cursor:pointer">tap to check storage</div>
       </div>
     </div>
   </div>
@@ -688,9 +724,14 @@ function navTo(p) {
   if(p==='home') refreshHome();
   if(p==='history') renderHistory('all');
   if(p==='stats') renderStats();
-  if(p==='score' && !matchLive) {
-    document.getElementById('scorer-setup').style.display='block';
-    document.getElementById('scorer-live').style.display='none';
+  if(p==='score') {
+    if(matchLive){
+      document.getElementById('scorer-setup').style.display='none';
+      document.getElementById('scorer-live').style.display='block';
+    } else {
+      document.getElementById('scorer-setup').style.display='block';
+      document.getElementById('scorer-live').style.display='none';
+    }
   }
   window.scrollTo(0,0);
 }
@@ -699,10 +740,24 @@ function navTo(p) {
 // LOCAL STORAGE (match history)
 // ═══════════════════════════════════════════════════════
 function getMatches() {
-  try { return JSON.parse(localStorage.getItem('shuttlescore_matches')||'[]'); } catch(e){return[];}
+  try {
+    var raw = localStorage.getItem('shuttlescore_matches');
+    if (!raw) return [];
+    var parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch(e) { console.log('getMatches error:', e); return []; }
 }
 function saveMatches(arr) {
-  try { localStorage.setItem('shuttlescore_matches', JSON.stringify(arr)); } catch(e){}
+  try {
+    localStorage.setItem('shuttlescore_matches', JSON.stringify(arr));
+    // Verify it saved
+    var verify = localStorage.getItem('shuttlescore_matches');
+    if (!verify) console.log('WARNING: localStorage save failed silently');
+  } catch(e) {
+    console.log('saveMatches error:', e);
+    // Show user-facing warning if storage is full
+    if (e.name === 'QuotaExceededError') showToast('Storage full — clear old matches');
+  }
 }
 function saveMatchRecord(record) {
   var arr = getMatches();
@@ -711,7 +766,7 @@ function saveMatchRecord(record) {
   saveMatches(arr);
 }
 function clearHistory() {
-  if(!confirm('Clear all match history?')) return;
+  // confirm() blocked in WebView — just clear directly
   localStorage.removeItem('shuttlescore_matches');
   renderHistory('all');
   refreshHome();
@@ -761,18 +816,12 @@ function refreshHome() {
   var matches = getMatches();
   var profile = getProfile();
   var pname = profile.name || 'Player';
-  var wins = 0, total = matches.length;
-  matches.forEach(function(m) {
-    if(m.winnerId === 'A') {
-      // check if profile player is in team A
-      if(m.teamA && (m.teamA.p1===pname||m.teamA.p2===pname||m.teamA.name===pname)) wins++;
-    }
-  });
-  // Just show total wins as winner count regardless of player
-  var allWins = matches.filter(function(m){return m.gameOver;}).length;
+  var total = matches.length;
+  var completedWins = matches.filter(function(m){ return m.gameOver && m.winnerId; }).length;
+  var winRate = total > 0 ? Math.round(completedWins / total * 100) + '%' : '—';
   document.getElementById('statTotal').textContent = total;
-  document.getElementById('statWins').textContent = matches.filter(function(m){return m.gameOver&&m.winnerId;}).length;
-  document.getElementById('statWinRate').textContent = total>0 ? Math.round(matches.filter(function(m){return m.gameOver&&m.winnerId;}).length/total*100)+'%' : '—';
+  document.getElementById('statWins').textContent = completedWins;
+  document.getElementById('statWinRate').textContent = winRate;
 
   var recent = matches.slice(0,3);
   var el = document.getElementById('homeRecentMatches');
@@ -812,6 +861,7 @@ function filterHistory(filter, el) {
 }
 function renderHistory(filter) {
   var all = getMatches();
+  console.log('renderHistory — total matches in storage:', all.length, 'filter:', filter);
   var filtered = all.filter(function(m) {
     if(filter==='all') return true;
     if(filter==='singles') return m.gameType==='singles';
@@ -822,7 +872,10 @@ function renderHistory(filter) {
   });
   var el = document.getElementById('historyList');
   if(!filtered.length) {
-    el.innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">No matches</div><div class="empty-sub">Nothing to show here yet</div></div>';
+    var msg = all.length > 0 ? 'No ' + filter + ' matches found' : 'No matches saved yet';
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div>'
+      + '<div class="empty-title">' + msg + '</div>'
+      + '<div class="empty-sub">' + (all.length === 0 ? 'Play a match to see history here' : 'Try a different filter') + '</div></div>';
     return;
   }
   el.innerHTML = filtered.map(matchCardHtml).join('');
@@ -862,10 +915,11 @@ function statsCard(label,val,icon) {
 // ═══════════════════════════════════════════════════════
 // SCORER STATE
 // ═══════════════════════════════════════════════════════
-var scoreA=0,scoreB=0,gameHistory=[],rallyHistory=[],currentServer='A',currentServerName='',gameOver=false,gameType='singles';
+var scoreA=0,scoreB=0,gameHistory=[],rallyHistory=[],currentServer='A',currentServerName='',gameOver=false,matchSaved=false,gameType='singles';
+var numSets=1,setsToWin=1,gamesA=0,gamesB=0,setsHistory=[],firstServer='A';
 var teamA={name:'',p1:'',p2:''},teamB={name:'',p1:'',p2:''};
 var courtPositions={'A-left':null,'A-right':null,'B-left':null,'B-right':null};
-var matchLive=false, _cachedCanvas=null, matchStartTime=null;
+var matchLive=false, _cachedCanvas=null, matchStartTime=null, matchSaved=false;
 
 function teamLabel(t){var o=t==='A'?teamA:teamB;if(gameType==='doubles')return o.name||(t==='A'?'Team A':'Team B');return o.p1.split(' ')[0];}
 
@@ -878,16 +932,41 @@ function selectType(type){
   });
 }
 
-function gv(id){var v=document.getElementById(id).value.trim();return v||null;}
+function selectSets(n){
+    numSets=n;setsToWin=Math.ceil(n/2);
+    [1,3,5].forEach(function(v){var el=document.getElementById('sets-btn-'+v);if(el)el.className='sets-sel-btn'+(v===n?' selected':'');});
+    var hints={1:'First to win 1 set wins',3:'Best of 3 — first to 2 sets',5:'Best of 5 — first to 3 sets'};
+    var h=document.getElementById('setsHint');if(h)h.textContent=hints[n]||'';
+  }
+  function selectSide(side){
+    firstServer=side==='swap'?'B':'A';
+    document.getElementById('side-btn-normal').className='sets-sel-btn'+(side==='normal'?' selected':'');
+    document.getElementById('side-btn-swap').className='sets-sel-btn'+(side==='swap'?' selected':'');
+  }
+  function gv(id){var v=document.getElementById(id).value.trim();return v||null;}
 
 function startMatch(){
   var a1=gv('nameA1')||'Player A',b1=gv('nameB1')||'Player B';
   teamA={name:gameType==='doubles'?(gv('teamNameA')||''):'',p1:a1,p2:gameType==='doubles'?(gv('nameA2')||'Partner A'):''};
   teamB={name:gameType==='doubles'?(gv('teamNameB')||''):'',p1:b1,p2:gameType==='doubles'?(gv('nameB2')||'Partner B'):''};
-  scoreA=0;scoreB=0;gameHistory=[];rallyHistory=[];gameOver=false;
-  currentServer='A';currentServerName=teamA.p1;matchLive=true;matchStartTime=Date.now();
-  courtPositions={'A-left':null,'A-right':teamA.p1,'B-left':null,'B-right':teamB.p1};
-  if(gameType==='doubles'){courtPositions['A-left']=teamA.p2||null;courtPositions['B-left']=teamB.p2||null;}
+  scoreA=0;scoreB=0;gameHistory=[];rallyHistory=[];gameOver=false;gamesA=0;gamesB=0;setsHistory=[];
+  currentServer=firstServer;currentServerName=firstServer==='A'?teamA.p1:teamB.p1;
+  matchLive=true;matchStartTime=Date.now();
+  // Score 0 (even) → server on RIGHT, receiver diagonal (LEFT)
+  var srvTeamInit=firstServer==='A'?teamA:teamB;
+  var recvTeamInit=firstServer==='A'?teamB:teamA;
+  var recvKeyInit=firstServer==='A'?'B':'A';
+  courtPositions={'A-left':null,'A-right':null,'B-left':null,'B-right':null};
+  if(gameType==='doubles'){
+    courtPositions[firstServer+'-right']=srvTeamInit.p1;
+    courtPositions[firstServer+'-left']=srvTeamInit.p2||null;
+    courtPositions[recvKeyInit+'-right']=recvTeamInit.p1;
+    courtPositions[recvKeyInit+'-left']=recvTeamInit.p2||null;
+  } else {
+    // Singles: server RIGHT, receiver diagonal LEFT
+    courtPositions[firstServer+'-right']=srvTeamInit.p1;
+    courtPositions[recvKeyInit+'-left']=recvTeamInit.p1;
+  }
 
   document.getElementById('liveTypeBadge').textContent=gameType==='singles'?'🧍 Singles':'👥 Doubles';
   if(gameType==='doubles'&&teamA.name){document.getElementById('dispA1').textContent=teamA.name;document.getElementById('dispA2').textContent=teamA.p1+' & '+teamA.p2;}
@@ -905,13 +984,56 @@ function startMatch(){
   updateDisplay();
 }
 
+function goHome(){
+  // Always go home — no confirm needed
+  pages.forEach(function(id){
+    document.getElementById('page-'+id).classList.toggle('active', id==='home');
+    var n=document.getElementById('nav-'+id); if(n) n.classList.toggle('active', id==='home');
+  });
+  currentPage='home';
+  refreshHome();
+  window.scrollTo(0,0);
+}
+
 function confirmNewMatch(){
-  if(matchLive && rallyHistory.length>0){
-    if(!confirm('End current match and go back?'))return;
-  }
-  matchLive=false;
+  // Note: window.confirm() is blocked in WebView — never use it
+  matchLive=false; matchSaved=false;
+  gameOver=false; scoreA=0; scoreB=0;
+  rallyHistory=[]; gameHistory=[];
+  // Navigate to score page
+  pages.forEach(function(id){
+    document.getElementById('page-'+id).classList.toggle('active', id==='score');
+    var n=document.getElementById('nav-'+id); if(n) n.classList.toggle('active', id==='score');
+  });
+  currentPage='score';
+  // Reset match options to defaults
+  numSets=1; setsToWin=1; firstServer='A';
+  gamesA=0; gamesB=0; setsHistory=[];
+  // Reset UI option buttons
+  [1,3,5].forEach(function(v){
+    var el=document.getElementById('sets-btn-'+v);
+    if(el) el.className='sets-sel-btn'+(v===1?' selected':'');
+  });
+  var sn=document.getElementById('side-btn-normal'), ss=document.getElementById('side-btn-swap');
+  if(sn) sn.className='sets-sel-btn selected';
+  if(ss) ss.className='sets-sel-btn';
+  var sh=document.getElementById('setsHint'); if(sh) sh.textContent='First to win 1 set wins';
+  // Reset type buttons
+  document.getElementById('btn-singles').className='type-btn selected';
+  document.getElementById('btn-doubles').className='type-btn';
+  gameType='singles';
+  ['doublesTeamNameA','doublesTeamNameB','doublesA','doublesB'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.className='dbln';
+  });
+  // Clear name inputs
+  ['nameA1','nameA2','nameB1','nameB2','teamNameA','teamNameB'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.value='';
+  });
+  // Show setup, hide live
   document.getElementById('scorer-setup').style.display='block';
   document.getElementById('scorer-live').style.display='none';
+  document.getElementById('winnerBanner').className='winner-banner';
+  window.scrollTo(0,0);
 }
 
 function openPositionPicker(cellId){
@@ -937,7 +1059,13 @@ function assignPosition(cellId,name){
   var team=cellId.charAt(0),side=cellId.split('-')[1],other=side==='left'?'right':'left';
   var obj=team==='A'?teamA:teamB;
   courtPositions[cellId]=name;
-  if(gameType==='doubles'&&obj.p2&&name!==null)courtPositions[team+'-'+other]=(name===obj.p1)?obj.p2:obj.p1;
+  if(gameType==='doubles'&&obj.p2&&name!==null){
+    // Doubles: auto-fill partner in other box
+    courtPositions[team+'-'+other]=(name===obj.p1)?obj.p2:obj.p1;
+  } else if(gameType==='singles'){
+    // Singles: CLEAR the other box so only one player per side
+    courtPositions[team+'-'+other]=null;
+  }
   var ss=currentServer==='A'?scoreA:scoreB,as=(ss%2===0)?'right':'left';
   var occ=courtPositions[currentServer+'-'+as];if(occ)currentServerName=occ;
   closePosOverlay();updateDisplay();
@@ -971,10 +1099,22 @@ function selectServer(player){
   currentServer=player.team;currentServerName=player.name;
   var ss=currentServer==='A'?scoreA:scoreB,s=(ss%2===0)?'right':'left',o=s==='right'?'left':'right';
   var st=player.team==='A'?teamA:teamB,rk=player.team==='A'?'B':'A',rt=player.team==='A'?teamB:teamA;
+  // Serving team: server on correct side, partner on other side
   courtPositions[player.team+'-'+s]=player.name;
-  if(gameType==='doubles'&&st.p2)courtPositions[player.team+'-'+o]=(player.name===st.p1)?st.p2:st.p1;
-  courtPositions[rk+'-'+s]=rt.p1;
-  if(gameType==='doubles'&&rt.p2)courtPositions[rk+'-'+o]=rt.p2;
+  if(gameType==='doubles'&&st.p2){
+    courtPositions[player.team+'-'+o]=(player.name===st.p1)?st.p2:st.p1;
+  } else {
+    // Singles: clear the other server-side box
+    courtPositions[player.team+'-'+o]=null;
+  }
+  // Receiving team: goes to DIAGONAL (opposite side = o)
+  courtPositions[rk+'-'+o]=rt.p1;
+  if(gameType==='doubles'&&rt.p2){
+    courtPositions[rk+'-'+s]=rt.p2;
+  } else {
+    // Singles: clear receiver's same-side box
+    courtPositions[rk+'-'+s]=null;
+  }
   closeServerPicker();updateDisplay();
 }
 
@@ -982,16 +1122,35 @@ function closeServerPicker(){document.getElementById('serverOverlay').className=
 
 function addPoint(player){
   if(gameOver)return;
-  gameHistory.push({scoreA:scoreA,scoreB:scoreB,currentServer:currentServer,currentServerName:currentServerName,rally:rallyHistory.slice(),positions:JSON.parse(JSON.stringify(courtPositions))});
+  gameHistory.push({scoreA:scoreA,scoreB:scoreB,currentServer:currentServer,currentServerName:currentServerName,rally:rallyHistory.slice(),positions:JSON.parse(JSON.stringify(courtPositions)),gamesA:gamesA,gamesB:gamesB,setsHistory:JSON.parse(JSON.stringify(setsHistory))});
   if(player==='A')scoreA++;else scoreB++;
+  var newSc=player==='A'?scoreA:scoreB;
+  var newSide=(newSc%2===0)?'right':'left';
+  var newOther=newSide==='right'?'left':'right';
+  var recvKey=player==='A'?'B':'A';
+  var srvTeam=player==='A'?teamA:teamB;
+  var recvTeam=player==='A'?teamB:teamA;
   if(currentServer!==player){
+    // Service changes: server on newSide, receiver on DIAGONAL (newOther)
     currentServer=player;
-    var ns=player==='A'?scoreA:scoreB,nd=(ns%2===0)?'right':'left';
-    currentServerName=courtPositions[player+'-'+nd]||(player==='A'?teamA.p1:teamB.p1);
+    courtPositions[player+'-'+newSide]=srvTeam.p1;
+    courtPositions[player+'-'+newOther]=gameType==='doubles'?srvTeam.p2||null:null;
+    courtPositions[recvKey+'-'+newOther]=recvTeam.p1;
+    courtPositions[recvKey+'-'+newSide]=gameType==='doubles'?recvTeam.p2||null:null;
+    currentServerName=srvTeam.p1;
   } else {
-    if(gameType==='doubles'){var lk=player+'-left',rk=player+'-right',tmp=courtPositions[lk];courtPositions[lk]=courtPositions[rk];courtPositions[rk]=tmp;}
-    var ns2=player==='A'?scoreA:scoreB,nd2=(ns2%2===0)?'right':'left';
-    currentServerName=courtPositions[player+'-'+nd2]||currentServerName;
+    // Same server wins point: move to new side
+    if(gameType==='doubles'){
+      var lk=player+'-left',rk=player+'-right',tmp=courtPositions[lk];
+      courtPositions[lk]=courtPositions[rk];courtPositions[rk]=tmp;
+    } else {
+      // Singles: server moves side, receiver mirrors diagonal
+      courtPositions[player+'-'+newSide]=srvTeam.p1;
+      courtPositions[player+'-'+newOther]=null;
+      courtPositions[recvKey+'-'+newOther]=recvTeam.p1;
+      courtPositions[recvKey+'-'+newSide]=null;
+    }
+    currentServerName=courtPositions[player+'-'+newSide]||currentServerName;
   }
   rallyHistory.push(player);
   var el=document.getElementById(player==='A'?'blockA':'blockB');
@@ -1006,16 +1165,51 @@ function addPoint(player){
 function undo(){
   if(!gameHistory.length)return;
   var last=gameHistory.pop();
-  scoreA=last.scoreA;scoreB=last.scoreB;currentServer=last.currentServer;currentServerName=last.currentServerName;
-  rallyHistory=last.rally;courtPositions=last.positions;gameOver=false;
+  scoreA=last.scoreA;
+  scoreB=last.scoreB;
+  currentServer=last.currentServer;
+  currentServerName=last.currentServerName;
+  rallyHistory=last.rally;
+  courtPositions=last.positions;
+  // Restore set state if saved
+  if(last.gamesA !== undefined) gamesA=last.gamesA;
+  if(last.gamesB !== undefined) gamesB=last.gamesB;
+  if(last.setsHistory !== undefined) setsHistory=last.setsHistory;
+  gameOver=false;
+  matchSaved=false;
   document.getElementById('winnerBanner').className='winner-banner';
+  updateSetsDisplay();
   updateDisplay();
 }
 
 function checkWinner(){
-  if((scoreA>=21||scoreB>=21)&&Math.abs(scoreA-scoreB)>=2)gameOver=true;
-  if(scoreA>=30||scoreB>=30)gameOver=true;
-  if(gameOver) saveMatchToHistory();
+  var gameWon=((scoreA>=21||scoreB>=21)&&Math.abs(scoreA-scoreB)>=2)||(scoreA>=30||scoreB>=30);
+  if(!gameWon) return;
+  if(numSets>1){
+    var setWinner=scoreA>scoreB?'A':'B';
+    setsHistory.push({scoreA:scoreA,scoreB:scoreB,winner:setWinner});
+    if(setWinner==='A')gamesA++;else gamesB++;
+    updateSetsDisplay();
+    if(gamesA>=setsToWin||gamesB>=setsToWin){
+      gameOver=true;
+      if(!matchSaved&&rallyHistory.length>0){matchSaved=true;saveMatchToHistory();}
+    } else {
+      // Next set: reset score, swap server
+      scoreA=0;scoreB=0;
+      currentServer=currentServer==='A'?'B':'A';
+      var sT=currentServer==='A'?teamA:teamB,rT=currentServer==='A'?teamB:teamA,rK=currentServer==='A'?'B':'A';
+      currentServerName=sT.p1;
+      courtPositions[currentServer+'-right']=sT.p1;
+      courtPositions[currentServer+'-left']=gameType==='doubles'?sT.p2||null:null;
+      courtPositions[rK+'-left']=rT.p1;
+      courtPositions[rK+'-right']=gameType==='doubles'?rT.p2||null:null;
+      // Do NOT clear gameHistory — keep it so undo can go back across sets
+      showToast('Set '+(setsHistory.length)+' done! Next set starting…');
+    }
+  } else {
+    gameOver=true;
+    if(!matchSaved&&rallyHistory.length>0){matchSaved=true;saveMatchToHistory();}
+  }
 }
 
 function saveMatchToHistory(){
@@ -1059,7 +1253,19 @@ function updateDisplay(){
   }
 }
 
-function shortName(n){var f=n.split(' ')[0];return f.length>9?f.substring(0,8)+'…':f;}
+function updateSetsDisplay(){
+    var bar=document.getElementById('setsDisplayBar');if(!bar)return;
+    if(numSets<=1){bar.style.display='none';return;}
+    bar.style.display='flex';
+    var html='';
+    setsHistory.forEach(function(s){
+      var wA=s.winner==='A';
+      html+='<div style="background:'+(wA?'var(--neon-dim)':'rgba(255,79,100,0.1)')+';border:1px solid '+(wA?'var(--neon)':'var(--red)')+';border-radius:8px;padding:3px 10px;font-size:11px;font-weight:700;font-family:Courier New,monospace;color:'+(wA?'var(--neon)':'var(--red)')+'">'+(wA?'<b>'+s.scoreA+'</b>-'+s.scoreB:s.scoreA+'-<b>'+s.scoreB+'</b>')+'</div>';
+    });
+    html+='<div style="background:var(--border);border-radius:8px;padding:3px 10px;font-size:10px;font-weight:700;font-family:Courier New,monospace;color:var(--muted)">Set '+(setsHistory.length+1)+'</div>';
+    bar.innerHTML=html;
+  }
+  function shortName(n){var f=n.split(' ')[0];return f.length>9?f.substring(0,8)+'…':f;}
 function esc(s){if(!s)return'';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 // ═══════════════════════════════════════════════════════
@@ -1074,7 +1280,7 @@ function closeShareModal(){document.getElementById('shareOverlay').className='ov
 function setStatus(msg,type){var el=document.getElementById('shareStatus');el.textContent=msg;el.className='share-status '+type;}
 
 function buildShareCanvas(){
-  var W=800,isD=gameType==='doubles';
+  var W=900,isD=gameType==='doubles';
   var tA=isD?(teamA.name||'Team A'):teamA.p1,tB=isD?(teamB.name||'Team B'):teamB.p1;
   var subA=isD?(teamA.p1+(teamA.p2?' & '+teamA.p2:'')):'' ,subB=isD?(teamB.p1+(teamB.p2?' & '+teamB.p2:'')):'' ;
   var lA=scoreA>scoreB,lB=scoreB>scoreA;
@@ -1083,27 +1289,41 @@ function buildShareCanvas(){
   var drows=rc>0?Math.ceil(rc/dpr):0;
   var yBase=isD?480:460,yW=yBase+10,yRH=gameOver?yW+80:yBase+10;
   var yD=yRH+28,yL=yD+drows*dg+20,H=yL+(rc>0?50:20);
-  var c=document.createElement('canvas');c.width=W;c.height=H;
+  // 2x pixel density for sharp output on all screens
+  var DPR=2;
+  var c=document.createElement('canvas');
+  c.width=W*DPR; c.height=H*DPR;
+  c.style.width=W+'px'; c.style.height=H+'px';
   var x=c.getContext('2d');
+  x.scale(DPR,DPR);
+  x.imageSmoothingEnabled=true;
+  x.imageSmoothingQuality='high';
   x.fillStyle='#0a0c10';x.fillRect(0,0,W,H);
   var g=x.createLinearGradient(0,0,W,0);g.addColorStop(0,'rgba(200,247,58,0)');g.addColorStop(0.5,'#c8f73a');g.addColorStop(1,'rgba(200,247,58,0)');
   x.fillStyle=g;x.fillRect(0,0,W,3);
   x.textAlign='center';x.font='26px serif';x.fillStyle='#c8f73a';x.fillText('🏸',W/2-80,56);
-  x.font='bold 28px "Courier New",monospace';x.fillStyle='#c8f73a';x.fillText('BADMINTON',W/2+16,56);
-  x.font='11px "Courier New",monospace';x.fillStyle='#5a6478';x.fillText('MATCH  RESULT',W/2,80);
+  x.font='bold 34px "Courier New",monospace';x.fillStyle='#c8f73a';x.fillText('BADMINTON',W/2+20,58);
+  x.font='13px "Courier New",monospace';x.fillStyle='#5a6478';x.fillText('MATCH  RESULT',W/2,84);
   rRect(x,W/2-65,96,130,26,13);x.fillStyle='#12161e';x.fill();x.strokeStyle='#2a3346';x.lineWidth=1;x.stroke();
   x.font='11px "Courier New",monospace';x.fillStyle='#5a6478';x.fillText(isD?'DOUBLES':'SINGLES',W/2,114);
-  x.font='bold 26px Arial,sans-serif';x.fillStyle=lA?'#c8f73a':'#e8edf5';x.textAlign='center';x.fillText(tA,W/4,160);
+  x.font='bold 32px Arial,sans-serif';x.fillStyle=lA?'#c8f73a':'#e8edf5';x.textAlign='center';x.fillText(tA,W/4,164);
   x.fillStyle='#2a3346';x.font='bold 14px "Courier New",monospace';x.fillText('VS',W/2,160);
-  x.font='bold 26px Arial,sans-serif';x.fillStyle=lB?'#c8f73a':'#e8edf5';x.fillText(tB,W*3/4,160);
+  x.font='bold 32px Arial,sans-serif';x.fillStyle=lB?'#c8f73a':'#e8edf5';x.fillText(tB,W*3/4,164);
   if(isD){x.font='13px Arial,sans-serif';x.fillStyle='#5a6478';x.fillText(subA,W/4,184);x.fillText(subB,W*3/4,184);}
   var ry=isD?200:176;x.strokeStyle='#1e2533';x.lineWidth=1;x.beginPath();x.moveTo(PAD,ry);x.lineTo(W-PAD,ry);x.stroke();
   var sy=isD?330:310;
-  x.font='bold 120px Arial,sans-serif';x.fillStyle=lA?'#c8f73a':'rgba(255,255,255,0.15)';x.textAlign='center';x.fillText(String(scoreA),W/4,sy);
+  x.font='bold 150px Arial,sans-serif';x.fillStyle=lA?'#c8f73a':'rgba(255,255,255,0.15)';x.textAlign='center';x.fillText(String(scoreA),W/4,sy);
   x.font='bold 50px Arial,sans-serif';x.fillStyle='#2a3346';x.fillText('—',W/2,sy-20);
-  x.font='bold 120px Arial,sans-serif';x.fillStyle=lB?'#c8f73a':'rgba(255,255,255,0.15)';x.fillText(String(scoreB),W*3/4,sy);
+  x.font='bold 150px Arial,sans-serif';x.fillStyle=lB?'#c8f73a':'rgba(255,255,255,0.15)';x.fillText(String(scoreB),W*3/4,sy);
+  // Sets detail row
+  if(setsHistory.length>0){
+    var setsY=isD?350:330;
+    x.font='12px "Courier New",monospace';x.fillStyle='#5a6478';x.textAlign='center';
+    var setStr=setsHistory.map(function(s){return s.scoreA+'-'+s.scoreB;}).join('   |   ');
+    x.fillText('SETS: '+setStr,W/2,setsY);
+  }
   var d2=isD?390:370;x.strokeStyle='#1e2533';x.lineWidth=1;x.beginPath();x.moveTo(PAD,d2);x.lineTo(W-PAD,d2);x.stroke();
-  if(gameOver&&wnr){x.font='11px "Courier New",monospace';x.fillStyle='#5a6478';x.textAlign='center';x.fillText('🏆  WINNER',W/2,yW+10);x.font='bold 30px Arial,sans-serif';x.fillStyle='#c8f73a';x.fillText(wnr.toUpperCase(),W/2,yW+48);}
+  if(gameOver&&wnr){x.font='11px "Courier New",monospace';x.fillStyle='#5a6478';x.textAlign='center';x.fillText('🏆  WINNER',W/2,yW+10);x.font='bold 36px Arial,sans-serif';x.fillStyle='#c8f73a';x.fillText(wnr.toUpperCase(),W/2,yW+50);}
   x.font='11px "Courier New",monospace';x.fillStyle='#5a6478';x.textAlign='center';x.fillText('RALLY HISTORY  ·  '+rc+' POINTS',W/2,yRH);
   if(rc>0){
     var rw=Math.min(rc,dpr)*dg,sx=W/2-rw/2+dr;
@@ -1116,7 +1336,7 @@ function buildShareCanvas(){
     lx+=14+wA+32;x.beginPath();x.arc(lx+5,ly-4,5,0,Math.PI*2);x.fillStyle='#ff4f64';x.fill();
     x.fillStyle='#5a6478';x.fillText(tB,lx+14,ly);
   }
-  x.font='10px "Courier New",monospace';x.fillStyle='rgba(90,100,120,0.4)';x.textAlign='center';x.fillText('euforg.com · ShuttleScore',W/2,H-10);
+  x.font='13px "Courier New",monospace';x.fillStyle='rgba(90,100,120,0.5)';x.textAlign='center';x.fillText('euforg.com  ·  ShuttleScore',W/2,H-14);
   return c;
 }
 
@@ -1164,7 +1384,15 @@ function shareApp(){
 // ═══════════════════════════════════════════════════════
 // TOAST
 // ═══════════════════════════════════════════════════════
-function showToast(msg){
+function debugStorage(){
+    var m=getMatches(),kb=0;
+    try{for(var k in localStorage){if(localStorage.hasOwnProperty(k))kb+=localStorage[k].length;}}catch(e){}
+    showToast(m.length+' matches · '+Math.round(kb/1024)+'KB');
+    console.log('Storage: '+m.length+' matches, '+Math.round(kb/1024)+'KB');
+    if(m.length)console.log('Latest:',JSON.stringify(m[0]).substring(0,150));
+  }
+
+  function showToast(msg){
   var t=document.getElementById('toast');t.textContent=msg;t.style.display='block';
   setTimeout(function(){t.style.display='none';},2000);
 }
