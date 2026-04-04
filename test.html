@@ -7,17 +7,34 @@
 <button onclick="sendData()">Send Data to App</button>
 
 <script>
-function sendData(){
-  var message = "Hello from WebView 🚀";
-
-  try {
-    window.AppInventor.setWebViewString(message);
-    alert("Sent to Kodular");
-  } catch(e){
-    alert("Not in Kodular");
-  }
-}
-</script>
+    function sendImage(){
+      var canvas = document.createElement("canvas");
+      canvas.width = 300;
+      canvas.height = 150;
+    
+      var ctx = canvas.getContext("2d");
+    
+      // Background
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(0, 0, 300, 150);
+    
+      // Text
+      ctx.fillStyle = "white";
+      ctx.font = "20px Arial";
+      ctx.fillText("Badminton Result 🏸", 30, 60);
+      ctx.fillText("Team A vs Team B", 30, 100);
+    
+      var dataUrl = canvas.toDataURL("image/png");
+    
+      try {
+        window.AppInventor.setWebViewString(dataUrl);
+      } catch(e){
+        alert("Error sending image");
+      }
+    }
+    </script>
+    
+    <button onclick="sendImage()">Send Image</button>
 
 </body>
 </html>
